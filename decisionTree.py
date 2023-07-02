@@ -3,12 +3,13 @@
 # Modified by a student to return the Digraph object instead of rendering it automatically.
 # Modified to avoid error of mis-identification of graphviz nodes. Although I used a random
 # generation and probabilistic cosmic rays might introduce equal IDs nevertheless.
-
-from random import random
+import copy
 import math
-from collections import deque, Counter
+from collections import deque
+from random import random
+
+import numpy as np
 from graphviz import Digraph
-from progress.bar import Bar
 
 
 class Node(object):
@@ -20,6 +21,9 @@ class Node(object):
 
     def is_leaf(self):
         return self.childs is None
+
+    def is_leaf_spec(self):
+        return self.next is None
 
 
 # Simple class of Decision Tree
@@ -287,14 +291,19 @@ class DecisionTree(object):
         return self.traverse_tree(self.root, inp_data)
 
     def traverse_tree(self, node, inp_data):
+        dict = {'age': 0, 'workclass': 1, 'fnlwgt': 2, 'education': 3, 'education-num': 4, 'marital-status': 5,
+                'occupation': 6, 'relationship': 7, 'race': 8, 'sex': 9, 'capital-gain': 10, 'capital-loss': 11,
+                'hours-per-week': 12, 'native-country': 13}
+
+        if node.value == ' <=50K' or node.value == ' >50k':
+            return node.value
 
         if node.childs:
-
             for child in node.childs:
-                if child.value in inp_data[node.value]:
+                data_index = dict[node.value]
+                inp_value = inp_data[data_index]
+                if child.value == inp_value:
                     return self.traverse_tree(child.next, inp_data)
-        else:
-            return node.value
 
     def reduced_error_pruning_helper(self, x_train_df, y_train_df):
         root = self.root
@@ -303,50 +312,71 @@ class DecisionTree(object):
             self.reduced_error_pruning(child.next, x_train_df, y_train_df)
 
     def reduced_error_pruning(self, node, x_train_df, y_train_df):
-        if node.is_leaf():
+        if node.value == " <=50K" or node.value == " >50k":
             return
 
-        original_accuracy = self.evaluate_accuracy(node, x_train_df, y_train_df)
+        original_accuracy = self.evaluate_accuracy(x_train_df, y_train_df)
+        # self.print_visualTree(render=True)
+        # print("The node to be pruned: ", node.value)
+        all_leafs = self.find_all_leafs(node)
+        # find the majority value in the leafs
+        np_array = np.array(all_leafs)
+        num_0 = np.count_nonzero(np_array == " <=50K")
+        num_1 = np.count_nonzero(np_array == " >50K")
+        if num_0 > num_1:
+            majority_class = " <=50K"
+        else:
+            majority_class = " >50K"
 
-        original_childs = node.childs
+        print("The majority class: ", majority_class)
+
+        # Delete the node
+        cpy_node = copy.deepcopy(node)
+        cpy_value = node.value
+        cpy_childs = node.childs
+        # the child is the majority class
+        temp_node = Node()
+        temp_node.value = majority_class
+        temp_node.next = None
+        temp_node.childs = None
+
+        node.next = temp_node
         node.childs = None
 
-        # print tree
         # self.print_visualTree(render=True)
-
-        majority_class = self.get_majority_class(y_train_df)
-
-        prune_accuracy = self.evaluate_accuracy(node, x_train_df, y_train_df)
-
+        prune_accuracy = self.evaluate_accuracy(x_train_df, y_train_df)
+        print("The accuracy before pruning: ", original_accuracy)
+        print("The accuracy after pruning: ", prune_accuracy)
+        # self.print_visualTree(render=True)
         num_nodes = self.get_num_nodes()
+        print("Number of nodes: ", num_nodes)
 
         # push into array
         self.num_nodes.append(num_nodes)
         self.accuracy_train.append(prune_accuracy)
 
-
         if prune_accuracy <= original_accuracy:
-            node.childs = original_childs
+            node.next = cpy_node
+            node.value = cpy_value
+            node.childs = cpy_childs
             return
 
-        node.value = majority_class
-        node.childs = None
+        # node.value = majority_class
+        node.next = majority_class
 
         self.reduced_error_pruning(node, x_train_df, y_train_df)
 
-    def evaluate_accuracy(self, node, x_train_df, y_train_df):
+    def evaluate_accuracy(self, x_train_df, y_train_df):
         accuracy = 0
 
-        bar = Bar('Processing', max=len(x_train_df))
+        # bar = Bar('Processing', max=len(x_train_df))
         for i in range(len(x_train_df)):
             dat_val = x_train_df.iloc[i]
-
             rec_val = self.traverse_tree_help(dat_val)
-
             if y_train_df.iloc[i] == rec_val:
                 accuracy += 1
-            bar.next()
-        bar.finish()
+        #     bar.next()
+        # bar.finish()
         return accuracy / len(x_train_df)
 
     def classify_data(self, node, data):
@@ -356,5 +386,20 @@ class DecisionTree(object):
             if child.name == data['attribute']:
                 return self.classify_data(child, data)
 
-    def get_majority_class(self, y_train_df):
-        return y_train_df.value_counts().idxmax()
+    def find_all_leafs(self, node):
+        if not node:
+            return []
+        if node.is_leaf_spec() and not node.childs:
+            return [node.value]
+        leafs = []
+        # print("The parent node: ", node.value)
+        if node.childs:
+            for child in node.childs:
+                # print("The child node: ", child.value)
+                if child.next and child.next.value == '>50k' or child.next.value == '<=50k':
+                    leafs.append(child.next.value)
+                elif child.next and child.next.value != '>50k':
+                    leafs += self.find_all_leafs(child.next)
+                else:
+                    leafs += self.find_all_leafs(child)
+        return leafs

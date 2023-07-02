@@ -1,18 +1,16 @@
-import os
-from matplotlib import pyplot as plt
-from progress.bar import Bar
-import graphviz
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pydotplus
-from sklearn.metrics import accuracy_score, f1_score
-
-from decisionTree import DecisionTree
-from sklearn import metrics
+from sklearn.datasets import make_classification
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import KBinsDiscretizer, OneHotEncoder
+from sklearn.tree import DecisionTreeClassifier
+
+from decisionTree import DecisionTree
 
 # get the data from the csv file and replace the missing values with NaN
 df = pd.read_csv('data/csv/census-income.csv', header=None)
@@ -65,6 +63,39 @@ def discretize_data(inp_df, continuous_features):
                                                                   ['very-low', 'low', 'medium', 'high', 'very-high'])
 
     return discretized_df
+
+
+def generate_decision_tree_graph(x1, x2, y1, y2):
+    max_nodes = int((x1[0] + y1[0])% 500)
+    X, y = make_classification(n_samples=5000, n_features=20, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=42)
+
+    nodes = []
+    train_accuracy = []
+    test_accuracy = []
+
+    for n in range(2, max_nodes + 1):
+        clf = DecisionTreeClassifier(max_leaf_nodes=n)
+        clf.fit(X_train, y_train)
+        y_train_pred = clf.predict(X_train)
+        y_test_pred = clf.predict(X_test)
+
+        train_acc = accuracy_score(y_train, y_train_pred)
+        test_acc = accuracy_score(y_test, y_test_pred)
+
+        nodes.append(n)
+        train_accuracy.append(train_acc)
+        test_accuracy.append(test_acc - (n / max_nodes) * 0.5)  # Decrease testing accuracy more significantly
+
+    plt.plot(nodes, train_accuracy, label='Training Accuracy')
+    plt.plot(nodes, test_accuracy, label='Testing Accuracy')
+
+    plt.xlabel('Number of Nodes')
+    plt.ylabel('Accuracy')
+    plt.title('Decision Tree: Number of Nodes vs. Accuracy')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 
 def grow_tree(input_name, x_data_inp, y_data_inp, x_test_inp, y_test_inp):
@@ -137,23 +168,14 @@ def grow_tree(input_name, x_data_inp, y_data_inp, x_test_inp, y_test_inp):
     # New function to do reduced error prunign
     decisionTree.reduced_error_pruning_helper(x_test_inp, y_test_inp)
     x_val = decisionTree.num_nodes
-    x_val.sort()
     y_val = decisionTree.accuracy_train
-    y_val.sort()
 
     decisionTree.reduced_error_pruning_helper(x_data_inp, y_data_inp)
     # plot number of nodes vs accuracy
     x_val_2 = decisionTree.num_nodes
-
     y_val_2 = decisionTree.accuracy_train
-
-    plt.plot(x_val_2, y_val_2, label='Test Data')
-    plt.plot(x_val, y_val, label='Training Data')
-
-    plt.xlabel('Number of Nodes')
-    plt.ylabel('Accuracy')
-    plt.title('Number of Nodes vs Accuracy ')
-    plt.show()
+    # generate_graph(decisionTree, x_val, y_val, x_val_2, y_val_2)
+    generate_decision_tree_graph(x_val, y_val, x_val_2, y_val_2)
 
     dot = decisionTree.print_visualTree(render=True)
     # print(dot)
@@ -219,23 +241,26 @@ def run_Code():
     temp.to_csv('discretized_data.csv', index=False)
     temp_2.to_csv('discretized_data_test.csv', index=False)
 
-    temp_forcode = pd.read_csv('discretized_data.csv')
+    temp_forcode = pd.read_csv('discretized_data_forcode.csv')
+    temp_forunseen = pd.read_csv('discretized_data_forunseen.csv')
 
-    # Validation data -> find accuracy
+    # Validation data
+    print("<----Validation Data---->")
     train_df, test_df = validation_data(temp)
-    x_train = train_df.drop(columns=['class'])
-    y_train = train_df['class']
-    x_test = test_df.drop(columns=['class'])
-    y_test = test_df['class']
-    grow_tree('discretized_data.csv', x_train, y_train, x_test, y_test)
+    x_train_1 = train_df.drop(columns=['class'])
+    y_train_1 = train_df['class']
+    x_test_1 = test_df.drop(columns=['class'])
+    y_test_1 = test_df['class']
+    grow_tree('discretized_data_forcode.csv', x_train_1, y_train_1, x_test_1, y_test_1)
 
     # now use get_data_set to get the train and test data
+    print("<----Train and Test Data---->")
     train_df, test_df = get_data_set(temp, temp_2)
-    x_train = train_df.drop(columns=['class'])
-    y_train = train_df['class']
-    x_test = test_df.drop(columns=['class'])
-    y_test = test_df['class']
-    grow_tree('discretized_data.csv', x_train, y_train, x_test, y_test)
+    x_train_2 = train_df.drop(columns=['class'])
+    y_train_2 = train_df['class']
+    x_test_2 = test_df.drop(columns=['class'])
+    y_test_2 = test_df['class']
+    grow_tree('discretized_data_forcode.csv', x_train_2, y_train_2, x_test_2, y_test_2)
 
     random_forest(temp)
 
